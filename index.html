@@ -6,35 +6,32 @@
     <title>S&B Master Archive</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Firebase SDK 로드 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- 선장님의 스크린샷에서 확인된 실제 설정값 적용 ---
         const firebaseConfig = {
             apiKey: "AIzaSyAFwAW39PfZ5K73zKNImq1wOQw4oXj0pbo",
             authDomain: "jp08041.firebaseapp.com",
             projectId: "jp08041",
             storageBucket: "jp08041.firebasestorage.app",
             messagingSenderId: "870601458638",
-            appId: "1:870601458638:web:ae02e24a77b4840bb3219f",
-            measurementId: "G-EQVTGYKZ2V"
+            appId: "1:870601458638:web:2a954a2ce5731065b3219f",
+            measurementId: "G-F1FQ043HWE"
         };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = "test1-parakeet"; // 저장소 식별자
+        const appId = "test1";
 
-        // 전역 변수로 할당하여 어디서든 접근 가능하게 설정
+        // 전역 변수 할당 (삭제 기능 포함)
         window.db = db;
         window.auth = auth;
         window.appId = appId;
-        window.firebaseUtils = { collection, addDoc, onSnapshot, query, serverTimestamp };
+        window.firebaseUtils = { collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc };
 
-        // 1. 인증 먼저 수행 (RULE 3 준수)
         const initAuth = async () => {
             try {
                 await signInAnonymously(auth);
@@ -47,10 +44,10 @@
         };
         initAuth();
 
-        // 2. 인증 상태 변화 감지 후 데이터 로드
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                document.getElementById('status-light').classList.replace('bg-gray-500', 'bg-green-500');
+                const light = document.getElementById('status-light');
+                if(light) light.classList.replace('bg-gray-500', 'bg-green-500');
                 loadPosts();
             }
         });
@@ -67,8 +64,6 @@
         .data-card { border: 1px solid #eeeeee; padding: 1.5rem; transition: all 0.3s; }
         .data-card:hover { border-color: #000; background-color: #fafafa; }
         .chart-container { position: relative; width: 100%; height: 280px; max-width: 500px; margin: auto; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #000; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
@@ -96,8 +91,6 @@
     </nav>
 
     <main class="max-w-5xl mx-auto p-6 min-h-[70vh]">
-
-        <!-- ARCHIVE Section -->
         <div id="archive" class="content-section active">
             <div class="grid md:grid-cols-2 gap-16 mb-20">
                 <div class="space-y-10">
@@ -122,7 +115,6 @@
             </div>
         </div>
 
-        <!-- SHIPS Section -->
         <div id="ships" class="content-section">
             <div class="grid md:grid-cols-2 gap-16">
                 <div>
@@ -151,7 +143,6 @@
             </div>
         </div>
 
-        <!-- COMMUNITY Section -->
         <div id="comm" class="content-section">
             <h2 class="text-xl font-black mb-8 border-b-2 border-black pb-2 inline-block">선원 게시판</h2>
             <div class="bg-gray-50 p-6 mb-10 border border-black">
@@ -165,7 +156,6 @@
                 <p class="text-center text-[10px] text-gray-300 py-20 tracking-widest animate-pulse">CONNECTING TO FIREBASE SERVER...</p>
             </div>
         </div>
-
     </main>
 
     <footer class="mt-20 py-12 px-6 border-t border-gray-100 flex justify-between items-center text-[9px] text-gray-300 font-bold uppercase tracking-[0.3em]">
@@ -174,7 +164,6 @@
     </footer>
 
     <script>
-        // 탭 전환 로직
         function switchTab(id) {
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
             document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
@@ -184,7 +173,6 @@
             if(id === 'ships') initRadar();
         }
 
-        // 레이더 차트 (함선 스펙)
         function initRadar() {
             const canvas = document.getElementById('radarChart');
             if(!canvas) return;
@@ -216,7 +204,6 @@
             });
         }
 
-        // 메시지 전송 로직
         async function sendMsg() {
             const author = document.getElementById('p-name').value || "ANON CAPTAIN";
             const content = document.getElementById('p-msg').value;
@@ -224,12 +211,11 @@
 
             const { db, appId, firebaseUtils, auth } = window;
             if(!auth.currentUser) {
-                alert("아직 서버에 연결되지 않았습니다. 잠시만 기다려주세요.");
+                alert("아직 서버에 연결되지 않았습니다.");
                 return;
             }
 
             try {
-                // RULE 1: 정해진 경로에 저장
                 await firebaseUtils.addDoc(firebaseUtils.collection(db, 'artifacts', appId, 'public', 'data', 'posts'), {
                     author,
                     content,
@@ -238,14 +224,25 @@
                 document.getElementById('p-msg').value = "";
             } catch(e) {
                 console.error("전송 실패:", e);
-                alert("전송에 실패했습니다. 파이어베이스 보안 규칙을 확인하세요.");
+                alert("전송 실패! Firebase 규칙을 확인하세요.");
             }
         }
 
-        // 메시지 불러오기 로직 (실시간)
+        // --- 삭제 함수 추가 ---
+        async function deleteMsg(postId) {
+            if(!confirm("이 전술 기록을 아카이브에서 영구 삭제하시겠습니까?")) return;
+            
+            const { db, appId, firebaseUtils } = window;
+            try {
+                await firebaseUtils.deleteDoc(firebaseUtils.doc(db, 'artifacts', appId, 'public', 'data', 'posts', postId));
+            } catch (e) {
+                console.error("삭제 실패:", e);
+                alert("삭제 권한이 없거나 오류가 발생했습니다.");
+            }
+        }
+
         function loadPosts() {
             const { db, appId, firebaseUtils } = window;
-            // RULE 1: 정해진 경로에서 불러오기
             const q = firebaseUtils.collection(db, 'artifacts', appId, 'public', 'data', 'posts');
             
             firebaseUtils.onSnapshot(q, (snap) => {
@@ -254,9 +251,7 @@
                 list.innerHTML = "";
                 
                 const posts = [];
-                snap.forEach(d => posts.push(d.data()));
-                
-                // RULE 2: 클라이언트 사이드 정렬
+                snap.forEach(d => posts.push({ id: d.id, ...d.data() }));
                 posts.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
                 
                 if(posts.length === 0) {
@@ -266,17 +261,18 @@
 
                 posts.forEach(p => {
                     const row = document.createElement('div');
-                    row.className = "flex gap-6 border-b border-gray-50 pb-3 items-start hover:bg-gray-50 transition p-2";
+                    row.className = "flex gap-6 border-b border-gray-50 pb-3 items-center hover:bg-gray-50 transition p-2 group";
                     row.innerHTML = `
                         <div class="text-[9px] font-black min-w-[80px] uppercase truncate opacity-40">${p.author}</div>
                         <div class="text-xs text-gray-500 font-medium flex-grow">${p.content}</div>
+                        <button onclick="deleteMsg('${p.id}')" class="opacity-0 group-hover:opacity-100 text-[9px] font-bold text-red-400 hover:text-red-600 transition uppercase tracking-tighter">Delete</button>
                     `;
                     list.appendChild(row);
                 });
             }, (err) => {
                 console.error("데이터 로드 실패:", err);
                 const list = document.getElementById('post-list');
-                if(list) list.innerHTML = `<p class="text-red-500 text-[10px] font-bold py-10 uppercase text-center">Security Rule Error: Check Firebase Rules Tab</p>`;
+                if(list) list.innerHTML = `<p class="text-red-500 text-[10px] font-bold py-10 uppercase text-center">Security Rule Error</p>`;
             });
         }
 
