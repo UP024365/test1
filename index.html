@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -24,31 +24,52 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
         const appId = "test1";
 
-        // 전역 변수 할당 (삭제 기능 포함)
+        // 전역 변수 설정
         window.db = db;
         window.auth = auth;
         window.appId = appId;
         window.firebaseUtils = { collection, addDoc, onSnapshot, query, serverTimestamp, deleteDoc, doc };
 
-        const initAuth = async () => {
+        // 구글 로그인 함수
+        window.login = async () => {
             try {
-                await signInAnonymously(auth);
-                console.log("데이터베이스 연결 성공!");
+                await signInWithPopup(auth, provider);
             } catch (e) {
-                console.error("연결 에러:", e);
-                const list = document.getElementById('post-list');
-                if(list) list.innerHTML = `<p class="text-red-500 text-xs p-10 text-center uppercase font-black">Database Connection Error<br>${e.message}</p>`;
+                console.error("로그인 실패:", e);
+                alert("로그인 중 오류가 발생했습니다.");
             }
         };
-        initAuth();
 
+        // 로그아웃 함수
+        window.logout = () => signOut(auth);
+
+        // 인증 상태 감시
         onAuthStateChanged(auth, (user) => {
+            const light = document.getElementById('status-light');
+            const authBtn = document.getElementById('auth-btn');
+            const pNameInput = document.getElementById('p-name');
+            const pMsgInput = document.getElementById('p-msg');
+
             if (user) {
-                const light = document.getElementById('status-light');
                 if(light) light.classList.replace('bg-gray-500', 'bg-green-500');
+                if(authBtn) authBtn.innerText = "LOGOUT";
+                if(pNameInput) {
+                    pNameInput.value = user.displayName;
+                    pNameInput.readOnly = true;
+                }
+                if(pMsgInput) pMsgInput.placeholder = "공유할 전술을 입력하세요...";
                 loadPosts();
+            } else {
+                if(light) light.classList.replace('bg-green-500', 'bg-gray-500');
+                if(authBtn) authBtn.innerText = "LOGIN WITH GOOGLE";
+                if(pNameInput) {
+                    pNameInput.value = "";
+                    pNameInput.placeholder = "LOGIN REQUIRED";
+                }
+                if(pMsgInput) pMsgInput.placeholder = "먼저 로그인을 해주세요.";
             }
         });
     </script>
@@ -144,17 +165,22 @@
         </div>
 
         <div id="comm" class="content-section">
-            <h2 class="text-xl font-black mb-8 border-b-2 border-black pb-2 inline-block">선원 게시판</h2>
+            <div class="flex justify-between items-end mb-8 border-b-2 border-black pb-2">
+                <h2 class="text-xl font-black">선원 게시판</h2>
+                <button id="auth-btn" onclick="handleAuth()" class="text-[10px] font-black border border-black px-4 py-1 hover:bg-black hover:text-white transition">
+                    LOGIN WITH GOOGLE
+                </button>
+            </div>
+            
             <div class="bg-gray-50 p-6 mb-10 border border-black">
                 <div class="flex flex-col md:flex-row gap-2 mb-2">
-                    <input type="text" id="p-name" placeholder="CAPTAIN NAME" class="p-3 text-xs font-black border border-gray-200 focus:border-black outline-none bg-white w-full md:w-1/4 uppercase tracking-tighter">
-                    <input type="text" id="p-msg" placeholder="SHARE YOUR TACTICS..." class="p-3 text-xs font-black border border-gray-200 focus:border-black outline-none bg-white w-full md:w-3/4">
+                    <input type="text" id="p-name" placeholder="LOGIN REQUIRED" readonly class="p-3 text-xs font-black border border-gray-200 outline-none bg-gray-100 w-full md:w-1/4 uppercase tracking-tighter">
+                    <input type="text" id="p-msg" placeholder="먼저 로그인을 해주세요." class="p-3 text-xs font-black border border-gray-200 focus:border-black outline-none bg-white w-full md:w-3/4">
                 </div>
                 <button onclick="sendMsg()" class="w-full bg-black text-white py-4 text-[10px] font-black tracking-[0.3em] hover:bg-gray-800 transition">PUBLISH TO ARCHIVE</button>
             </div>
             <div id="post-list" class="space-y-3">
-                <p class="text-center text-[10px] text-gray-300 py-20 tracking-widest animate-pulse">CONNECTING TO FIREBASE SERVER...</p>
-            </div>
+                </div>
         </div>
     </main>
 
@@ -204,45 +230,56 @@
             });
         }
 
+        // 로그인/로그아웃 핸들러
+        function handleAuth() {
+            if (window.auth.currentUser) {
+                window.logout();
+            } else {
+                window.login();
+            }
+        }
+
         async function sendMsg() {
-            const author = document.getElementById('p-name').value || "ANON CAPTAIN";
+            const user = window.auth.currentUser;
+            if(!user) return alert("구글 로그인이 필요합니다!");
+
             const content = document.getElementById('p-msg').value;
             if(!content) return;
 
-            const { db, appId, firebaseUtils, auth } = window;
-            if(!auth.currentUser) {
-                alert("아직 서버에 연결되지 않았습니다.");
-                return;
-            }
+            const { db, appId, firebaseUtils } = window;
 
             try {
                 await firebaseUtils.addDoc(firebaseUtils.collection(db, 'artifacts', appId, 'public', 'data', 'posts'), {
-                    author,
-                    content,
+                    author: user.displayName,
+                    uid: user.uid, // 작성자 고유 ID 저장
+                    content: content,
                     createdAt: firebaseUtils.serverTimestamp()
                 });
                 document.getElementById('p-msg').value = "";
             } catch(e) {
-                console.error("전송 실패:", e);
-                alert("전송 실패! Firebase 규칙을 확인하세요.");
+                alert("전송 실패! 보안 규칙을 확인하세요.");
             }
         }
 
-        // --- 삭제 함수 추가 ---
-        async function deleteMsg(postId) {
-            if(!confirm("이 전술 기록을 아카이브에서 영구 삭제하시겠습니까?")) return;
+        async function deleteMsg(postId, writerUid) {
+            const user = window.auth.currentUser;
+            if(!user || user.uid !== writerUid) {
+                alert("본인이 작성한 글만 삭제할 수 있습니다.");
+                return;
+            }
+
+            if(!confirm("이 기록을 삭제하시겠습니까?")) return;
             
             const { db, appId, firebaseUtils } = window;
             try {
                 await firebaseUtils.deleteDoc(firebaseUtils.doc(db, 'artifacts', appId, 'public', 'data', 'posts', postId));
             } catch (e) {
-                console.error("삭제 실패:", e);
-                alert("삭제 권한이 없거나 오류가 발생했습니다.");
+                alert("삭제 권한이 없습니다.");
             }
         }
 
         function loadPosts() {
-            const { db, appId, firebaseUtils } = window;
+            const { db, appId, firebaseUtils, auth } = window;
             const q = firebaseUtils.collection(db, 'artifacts', appId, 'public', 'data', 'posts');
             
             firebaseUtils.onSnapshot(q, (snap) => {
@@ -260,19 +297,16 @@
                 }
 
                 posts.forEach(p => {
+                    const isMyPost = auth.currentUser && auth.currentUser.uid === p.uid;
                     const row = document.createElement('div');
                     row.className = "flex gap-6 border-b border-gray-50 pb-3 items-center hover:bg-gray-50 transition p-2 group";
                     row.innerHTML = `
-                        <div class="text-[9px] font-black min-w-[80px] uppercase truncate opacity-40">${p.author}</div>
+                        <div class="text-[9px] font-black min-w-[80px] uppercase truncate ${isMyPost ? 'text-blue-600' : 'opacity-40'}">${p.author}</div>
                         <div class="text-xs text-gray-500 font-medium flex-grow">${p.content}</div>
-                        <button onclick="deleteMsg('${p.id}')" class="opacity-0 group-hover:opacity-100 text-[9px] font-bold text-red-400 hover:text-red-600 transition uppercase tracking-tighter">Delete</button>
+                        ${isMyPost ? `<button onclick="deleteMsg('${p.id}', '${p.uid}')" class="opacity-0 group-hover:opacity-100 text-[9px] font-bold text-red-400 hover:text-red-600 transition uppercase tracking-tighter">Delete</button>` : ''}
                     `;
                     list.appendChild(row);
                 });
-            }, (err) => {
-                console.error("데이터 로드 실패:", err);
-                const list = document.getElementById('post-list');
-                if(list) list.innerHTML = `<p class="text-red-500 text-[10px] font-bold py-10 uppercase text-center">Security Rule Error</p>`;
             });
         }
 
